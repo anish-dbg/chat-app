@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import { middleware } from "./middleware";
 import { CreateUserSchema, SigninSchema, CreateRoomSchema } from "@repo/common/types";
 import bcrypt from "bcrypt";
+import { PrismaClient } from "@prisma/client";
 
 declare global {
   namespace Express {
@@ -134,6 +135,26 @@ app.get("/rooms", async (req, res) => {
     rooms,
   });
 });
+
+app.get("/chats/:roomId", async(req,res) =>{
+  const roomId = Number(req.params.roomId);
+  const message = await prismaClient.chat.findMany({
+    where:{
+      roomId: roomId
+    },
+    orderBy: {
+      id: "desc"
+    },
+    take: 50
+  });
+  
+  res.json({
+    message,
+  });
+})
+
+
+
 
 /**
  * ✅ START SERVER
