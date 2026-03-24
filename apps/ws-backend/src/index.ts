@@ -1,4 +1,4 @@
-import { WebSocketServer } from "ws";
+import { WebSocketServer, WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "@repo/backend-common/config"
 
@@ -9,6 +9,21 @@ interface JwtPayLoad {
 
 const wss = new WebSocketServer({ port: 8080});
 
+interface User{
+    ws: WebSocket,
+    rooms: string[],
+    userId: string
+}
+
+const users: User[] = [];
+
+function checkUser(token: string): string | null {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return (decoded as JwtPayLoad).userId || null;
+}
+
+
+
 wss.on('connection', function(ws, request){
     // extraction of token
     const url = request.url;
@@ -17,15 +32,45 @@ wss.on('connection', function(ws, request){
     }
     const queryParams = new URLSearchParams(url.split('?')[1]);
     const token = queryParams.get('token') || "";
-    const decoded = jwt.verify(token, JWT_SECRET);
-
-
-    if(!decoded || !(decoded as JwtPayLoad).userId){
+    const userId = checkUser(token);
+    if(userId == null){
         ws.close();
         return;
     }
 
+    users.push({
+        userId,
+        rooms: [],
+        ws
+    })
+
+
     ws.on('message', function message(data){
-        ws.send('pong')
+        const parseData = JSON.parse(data as unknown as string);  // { type: "join room", roomId: 1}
+        if(parseData.type === 'join_room'){
+            const user = users.find(x => x.ws === ws);
+            user?.rooms.push(parseData.roomId);
+        }
+        if(parseData.type === 'leave_room'){
+            const user = users.find(x => x.ws === ws);
+            if(!user){
+                return;
+            }
+            user.rooms = user?.rooms.filter(x => x === parseData.room);
+        }
+        if(parseData.type === "chat"){
+            const roomId = parseData.roomId;
+            const message = parseData.message;
+
+            users.forEach(user => {
+                if(user.rooms.includes(roomId)){
+                    user.ws.send(JSON.stringify({
+                        type: "chat",
+                        message: message,
+                        roomId
+                    }))
+                }
+            })
+        }
     });
 });
