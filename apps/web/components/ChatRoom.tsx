@@ -7,7 +7,6 @@ async function getChats(roomId: string){
     return response.data.messages
 }
 
-
 export async function ChatRoom({id}: {
     id: string
 }) {

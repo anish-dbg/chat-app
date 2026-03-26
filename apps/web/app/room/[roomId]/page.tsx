@@ -12,8 +12,6 @@ async function getRoomId(slug: string){
 
    return response.data.room.id;
 }
-
-
 export default async function ChatRoom1({ params }: { params: { slug: string } }) {
     try {
         const slug = params.slug;
