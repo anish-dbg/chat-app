@@ -25,7 +25,7 @@ export function ChatRoomClient({
             }));
             socket.onmessage = (event) =>{
                 const parsedData = JSON.parse(event.data);
-                if(parsedData.type === "chats"){
+                if(parsedData.type === "chat"){
                     setChats(c => [...c, {message: parsedData.message}])
                 }
             }
@@ -33,7 +33,7 @@ export function ChatRoomClient({
     }, [socket, loading, id])
 
     return <div>
-        {messages.map(m => <div>{m.message}</div>)}
+        {messages.map((m,i) => <div key={i}>{m.message}</div>)}
         <input type="text" value={currentMessage} onChange={e => {
             setCurrentMessage(e.target.value);
         }} />

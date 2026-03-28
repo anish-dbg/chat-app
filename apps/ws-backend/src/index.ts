@@ -1,91 +1,142 @@
 import { WebSocketServer, WebSocket } from "ws";
 import jwt from "jsonwebtoken";
-import { JWT_SECRET } from "@repo/backend-common/config"
+import { JWT_SECRET } from "@repo/backend-common/config";
 import { PrismaClient } from "@prisma/client";
 
+const prisma = new PrismaClient();
+const wss = new WebSocketServer({ port: 8080 });
 
-interface JwtPayLoad {
-    userId: string;
+interface JwtPayload {
+  userId: string;
 }
 
-const prisma = new PrismaClient();
-const wss = new WebSocketServer({ port: 8080});
-
-interface User{
-    ws: WebSocket,
-    rooms: string[],
-    userId: string
+interface User {
+  ws: WebSocket;
+  rooms: number[];
+  userId: string;
 }
 
 const users: User[] = [];
 
+// ✅ Verify JWT safely
 function checkUser(token: string): string | null {
-    try{
-        const decoded = jwt.verify(token, JWT_SECRET);
-        return (decoded as JwtPayLoad).userId || null;
-    }catch(e){
-        return null;
-    }
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    return decoded.userId;
+  } catch (e) {
+    return null;
+  }
 }
 
+wss.on("connection", async (ws, request) => {
+  try {
+    // ✅ Safe URL parsing
+    const url = new URL(request.url!, "http://localhost");
+    const token = url.searchParams.get("token") || "";
 
-
-wss.on('connection', function(ws, request){
-    // extraction of token
-    const url = request.url;
-    if(!url){
-        return;
-    }
-    const queryParams = new URLSearchParams(url.split('?')[1]);
-    const token = queryParams.get('token') || "";
     const userId = checkUser(token);
-    if(userId == null){
-        ws.close();
-        return;
+
+    if (!userId) {
+      ws.close();
+      return;
     }
 
-    users.push({
-        userId,
-        rooms: [],
-        ws
-    })
-
-
-    ws.on('message', async function message(data){
-        const parseData = JSON.parse(data as unknown as string);  // { type: "join room", roomId: 1}
-        if(parseData.type === 'join_room'){
-            const user = users.find(x => x.ws === ws);
-            user?.rooms.push(parseData.roomId);
-        }
-        if(parseData.type === 'leave_room'){
-            const user = users.find(x => x.ws === ws);
-            if(!user){
-                return;
-            }
-            user.rooms = user?.rooms.filter(x => x === parseData.room);
-        }
-        if(parseData.type === "chat"){
-            const roomId = parseData.roomId;
-            const message = parseData.message;
-
-            //db call
-            await prisma.chat.create({
-                data:{
-                    roomId,
-                    message,
-                    userId
-                }
-            })
-
-            users.forEach(user => {
-                if(user.rooms.includes(roomId)){
-                    user.ws.send(JSON.stringify({
-                        type: "chat",
-                        message: message,
-                        roomId
-                    }))
-                }
-            })
-        }
+    // ✅ Check user exists in DB (CRITICAL FIX)
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
     });
+
+    if (!existingUser) {
+      console.log("❌ User not found in DB:", userId);
+      ws.close();
+      return;
+    }
+
+    console.log("✅ User connected:", userId);
+
+    const user: User = {
+      ws,
+      rooms: [],
+      userId,
+    };
+
+    users.push(user);
+
+    ws.on("message", async (data) => {
+      let parsedData;
+
+      // ✅ Safe JSON parsing
+      try {
+        parsedData = JSON.parse(data.toString());
+      } catch {
+        console.log("Invalid JSON");
+        return;
+      }
+
+      // ✅ JOIN ROOM
+      if (parsedData.type === "join_room") {
+        user.rooms.push(parsedData.roomId);
+      }
+
+      // ✅ LEAVE ROOM (FIXED)
+      if (parsedData.type === "leave_room") {
+        user.rooms = user.rooms.filter(
+          (roomId) => roomId !== parsedData.roomId
+        );
+      }
+
+      // ✅ CHAT MESSAGE
+      if (parsedData.type === "chat") {
+        const { roomId, message } = parsedData;
+
+        try {
+          // 🔥 Check room exists
+          const room = await prisma.room.findUnique({
+            where: { id: roomId },
+          });
+
+          if (!room) {
+            console.log("❌ Room not found");
+            return;
+          }
+
+          // 🔥 Store message
+          await prisma.chat.create({
+            data: {
+              roomId,
+              message,
+              userId,
+            },
+          });
+
+          // 🔥 Broadcast
+          users.forEach((u) => {
+            if (u.rooms.includes(roomId)) {
+              u.ws.send(
+                JSON.stringify({
+                  type: "chat",
+                  message,
+                  roomId,
+                })
+              );
+            }
+          });
+        } catch (e) {
+          console.log("❌ Chat error:", e);
+        }
+      }
+    });
+
+    // ✅ Cleanup on disconnect
+    ws.on("close", () => {
+      const index = users.findIndex((u) => u.ws === ws);
+      if (index !== -1) {
+        users.splice(index, 1);
+      }
+      console.log("🔴 User disconnected");
+    });
+  } catch (e) {
+    console.log("Connection error:", e);
+    ws.close();
+  }
 });
