@@ -106,7 +106,6 @@ app.post("/room", middleware, async (req, res) => {
       msg: "Invalid input",
     });
   }
-
   try {
     const room = await prismaClient.room.create({
       data: {

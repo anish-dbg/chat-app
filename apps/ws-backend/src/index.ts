@@ -5,7 +5,6 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 const wss = new WebSocketServer({ port: 8080 });
-
 interface JwtPayload {
   userId: string;
 }

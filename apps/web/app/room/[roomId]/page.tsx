@@ -9,7 +9,6 @@ async function getRoomId(slug: string){
    if (!response.data.room) {
       throw new Error("Room not found");
    }
-
    return response.data.room.id;
 }
 export default async function ChatRoom1({ params }: { params: { slug: string } }) {
