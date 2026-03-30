@@ -8,7 +8,6 @@ const wss = new WebSocketServer({ port: 8080 });
 interface JwtPayload {
   userId: string;
 }
-
 interface User {
   ws: WebSocket;
   rooms: number[];
