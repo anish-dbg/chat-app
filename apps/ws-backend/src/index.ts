@@ -13,9 +13,7 @@ interface User {
   rooms: number[];
   userId: string;
 }
-
 const users: User[] = [];
-
 // ✅ Verify JWT safely
 function checkUser(token: string): string | null {
   try {
@@ -25,7 +23,6 @@ function checkUser(token: string): string | null {
     return null;
   }
 }
-
 wss.on("connection", async (ws, request) => {
   try {
     // ✅ Safe URL parsing
